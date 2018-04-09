@@ -107,7 +107,7 @@ export default class VideoPlayer extends Component {
          * Player information
          */
         this.player = {
-            controlTimeoutDelay: this.props.controlTimeout || 15000,
+            controlTimeoutDelay: this.props.controlTimeout || 2000,
             volumePanResponder: PanResponder,
             seekPanResponder: PanResponder,
             controlTimeout: null,
@@ -120,15 +120,10 @@ export default class VideoPlayer extends Component {
         /**
          * Various animations
          */
-        const initialValue = this.props.showOnStart ? 1 : 0;
+        const initialValue = this.props.paused ? 1 : 0;
 
         this.animations = {
-            bottomControl: {
-                marginBottom: new Animated.Value( 0 ),
-                opacity: new Animated.Value( initialValue ),
-            },
-            topControl: {
-                marginTop: new Animated.Value( 0 ),
+            control: {
                 opacity: new Animated.Value( initialValue ),
             },
             video: {
@@ -228,7 +223,10 @@ export default class VideoPlayer extends Component {
      * Either close the video or go to a
      * new page.
      */
-    _onEnd() {}
+    _onEnd() {
+        this._showControls();
+        this.setState({ paused: true });
+    }
 
     /**
      * Set the error state to true which then
@@ -253,11 +251,11 @@ export default class VideoPlayer extends Component {
     _onScreenTouch() {
         let state = this.state;
         const time = new Date().getTime();
-        const delta =  time - state.lastScreenPress;
+        // const delta =  time - state.lastScreenPress;
 
-        if ( delta < 300 ) {
-            this.methods.toggleFullscreen();
-        }
+        // if ( delta < 300 ) {
+        //     this.methods.toggleFullscreen();
+        // }
 
         this.methods.toggleControls();
         state.lastScreenPress = time;
@@ -282,12 +280,15 @@ export default class VideoPlayer extends Component {
     /**
      * Set a timeout when the controls are shown
      * that hides them after a length of time.
-     * Default is 15s
+     * Default is 2s
      */
     setControlTimeout() {
-        this.player.controlTimeout = setTimeout( ()=> {
-            this._hideControls();
-        }, this.player.controlTimeoutDelay );
+        if (!this.state.paused) {
+            // only hide if playing
+            this.player.controlTimeout = setTimeout( ()=> {
+                this._hideControls();
+            }, this.player.controlTimeoutDelay );
+        }
     }
 
     /**
@@ -311,24 +312,10 @@ export default class VideoPlayer extends Component {
      * screen so they're not interactable
      */
     hideControlAnimation() {
-        Animated.parallel([
-            Animated.timing(
-                this.animations.topControl.opacity,
-                { toValue: 0 }
-            ),
-            Animated.timing(
-                this.animations.topControl.marginTop,
-                { toValue: -100 }
-            ),
-            Animated.timing(
-                this.animations.bottomControl.opacity,
-                { toValue: 0 }
-            ),
-            Animated.timing(
-                this.animations.bottomControl.marginBottom,
-                { toValue: -100 }
-            ),
-        ]).start();
+        Animated.timing(
+            this.animations.control.opacity,
+            { toValue: 0 }
+        ).start();
     }
 
     /**
@@ -337,24 +324,10 @@ export default class VideoPlayer extends Component {
      * fade in.
      */
     showControlAnimation() {
-        Animated.parallel([
-            Animated.timing(
-                this.animations.topControl.opacity,
-                { toValue: 1 }
-            ),
-            Animated.timing(
-                this.animations.topControl.marginTop,
-                { toValue: 0 }
-            ),
-            Animated.timing(
-                this.animations.bottomControl.opacity,
-                { toValue: 1 }
-            ),
-            Animated.timing(
-                this.animations.bottomControl.marginBottom,
-                { toValue: 0 }
-            ),
-        ]).start();
+        Animated.timing(
+            this.animations.control.opacity,
+            { toValue: 1 }
+        ).start();
     }
 
     /**
@@ -391,6 +364,18 @@ export default class VideoPlayer extends Component {
         let state = this.state;
         state.showControls = false;
         this.hideControlAnimation();
+
+        this.setState( state );
+    }
+
+    /**
+     * Function to show the controls. Sets our
+     * state then calls the animation.
+     */
+    _showControls() {
+        let state = this.state;
+        state.showControls = true;
+        this.showControlAnimation();
 
         this.setState( state );
     }
@@ -447,9 +432,14 @@ export default class VideoPlayer extends Component {
         state.paused = !state.paused;
 
         if (state.paused) {
+            this.clearControlTimeout();
             typeof this.events.onPause === 'function' && this.events.onPause();
         }
         else {
+            this.resetControlTimeout();
+            if (state.currentTime >= state.duration) {
+                this.seekTo(0);
+            }
             typeof this.events.onPlay === 'function' && this.events.onPlay();
         }
 
@@ -741,7 +731,6 @@ export default class VideoPlayer extends Component {
                 const time = this.calculateTimeFromSeekerPosition();
                 let state = this.state;
                 if ( time >= state.duration && ! state.loading ) {
-                    state.paused = true;
                     this.events.onEnd();
                 } else {
                     this.seekTo( time );
@@ -846,23 +835,27 @@ export default class VideoPlayer extends Component {
     }
 
     /**
-     * Groups the top bar controls together in an animated
-     * view and spaces them out.
+     * Render controls
      */
-    renderTopControls() {
+    renderControls() {
 
         const backControl = this.props.disableBack ? this.renderNullControl() : this.renderBack();
         const volumeControl = this.props.disableVolume ? this.renderNullControl() : this.renderVolume();
         const fullscreenControl = this.props.disableFullscreen ? this.renderNullControl() : this.renderFullscreen();
+        const timerControl = this.props.disableTimer ? this.renderNullControl() : this.renderTimer();
+        const seekbarControl = this.props.disableSeekbar ? this.renderNullControl() : this.renderSeekbar();
+        const playPauseControl = this.props.disablePlayPause ? this.renderNullControl() : this.renderPlayPause();
 
         return(
-            <Animated.View style={[
-                styles.controls.top,
-                {
-                    opacity: this.animations.topControl.opacity,
-                    marginTop: this.animations.topControl.marginTop,
-                }
-            ]}>
+            <Animated.View
+                pointerEvents={this.state.showControls ? 'auto' : 'none'}
+                style={[
+                    styles.controls.container,
+                    {
+                        opacity: this.animations.control.opacity,
+                    }
+                ]}
+            >
                 <ImageBackground
                     source={ require( './assets/img/top-vignette.png' ) }
                     style={[ styles.controls.column ]}
@@ -873,6 +866,21 @@ export default class VideoPlayer extends Component {
                             { volumeControl }
                             { fullscreenControl }
                         </View>
+                    </View>
+                </ImageBackground>
+                <ImageBackground
+                    source={ require( './assets/img/bottom-vignette.png' ) }
+                    style={[ styles.controls.column ]}
+                    imageStyle={[ styles.controls.vignette ]}>
+                    { seekbarControl }
+                    <View style={[
+                        styles.controls.row,
+                        styles.controls.bottomControlGroup
+                    ]}>
+                        { playPauseControl }
+                        { this.renderTitle() }
+                        { timerControl }
+
                     </View>
                 </ImageBackground>
             </Animated.View>
@@ -932,42 +940,6 @@ export default class VideoPlayer extends Component {
             <Image source={ source } />,
             this.methods.toggleFullscreen,
             styles.controls.fullscreen
-        );
-    }
-
-    /**
-     * Render bottom control group and wrap it in a holder
-     */
-    renderBottomControls() {
-
-        const timerControl = this.props.disableTimer ? this.renderNullControl() : this.renderTimer();
-        const seekbarControl = this.props.disableSeekbar ? this.renderNullControl() : this.renderSeekbar();
-        const playPauseControl = this.props.disablePlayPause ? this.renderNullControl() : this.renderPlayPause();
-
-        return(
-            <Animated.View style={[
-                styles.controls.bottom,
-                {
-                    opacity: this.animations.bottomControl.opacity,
-                    marginBottom: this.animations.bottomControl.marginBottom,
-                }
-            ]}>
-                <ImageBackground
-                    source={ require( './assets/img/bottom-vignette.png' ) }
-                    style={[ styles.controls.column ]}
-                    imageStyle={[ styles.controls.vignette ]}>
-                    { seekbarControl }
-                    <View style={[
-                        styles.controls.row,
-                        styles.controls.bottomControlGroup
-                    ]}>
-                        { playPauseControl }
-                        { this.renderTitle() }
-                        { timerControl }
-
-                    </View>
-                </ImageBackground>
-            </Animated.View>
         );
     }
 
@@ -1124,9 +1096,8 @@ export default class VideoPlayer extends Component {
                         source={ this.props.source }
                     />
                     { this.renderError() }
-                    { this.renderTopControls() }
+                    { this.renderControls() }
                     { this.renderLoader() }
-                    { this.renderBottomControls() }
                 </View>
             </TouchableWithoutFeedback>
         );
@@ -1186,6 +1157,11 @@ const styles = {
         },
     }),
     controls: StyleSheet.create({
+        container: {
+            flex: 1,
+            alignItems: 'stretch',
+            justifyContent: 'space-between',
+        },
         row: {
             flexDirection: 'row',
             alignItems: 'center',
