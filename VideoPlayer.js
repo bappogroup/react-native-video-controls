@@ -30,6 +30,7 @@ export default class VideoPlayer extends Component {
         muted:                          false,
         title:                          '',
         rate:                           1,
+        disableControls:                false,
     };
 
     constructor( props ) {
@@ -838,6 +839,7 @@ export default class VideoPlayer extends Component {
      * Render controls
      */
     renderControls() {
+        if (this.props.disableControls) return null;
 
         const backControl = this.props.disableBack ? this.renderNullControl() : this.renderBack();
         const volumeControl = this.props.disableVolume ? this.renderNullControl() : this.renderVolume();
